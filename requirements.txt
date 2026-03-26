@@ -1,0 +1,4 @@
+pyTelegramBotAPI==4.13.0
+yt-dlp==2026.03.16
+Pillow==10.0.0
+requests==2.31.0
