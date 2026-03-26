@@ -7,6 +7,7 @@ import threading
 import requests
 from PIL import Image
 import subprocess
+import base64
 
 # 🔐 SETTINGS
 BOT_TOKEN = "8753953837:AAGCOnpbPzk7Qti7i-M62TuIT17OAeaIuQU"
@@ -67,6 +68,16 @@ def progress_hook(d, chat_id, msg_id):
     except:
         pass
 
+# ------------------ URL DECRYPT ------------------
+def decrypt_url(url):
+    try:
+        decoded = base64.b64decode(url).decode("utf-8")
+        if decoded.startswith("http"):
+            return decoded
+    except:
+        pass
+    return url
+
 # ------------------ DOWNLOAD ------------------
 def download_video(url, chat_id, msg_id, quality):
     global downloading
@@ -74,10 +85,10 @@ def download_video(url, chat_id, msg_id, quality):
     filepath = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.mp4")
     try:
         bot.edit_message_text("⚡ Downloading...", chat_id, msg_id)
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
 
-        if quality == "auto":
+        if ".m3u8" in url:
+            format_code = "best"
+        elif quality == "auto":
             format_code = "bestvideo+bestaudio/best"
         else:
             format_code = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
@@ -152,27 +163,43 @@ def fetch_qualities(url):
 def cmd_dl(message):
     if not is_admin(message):
         return
+
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         bot.reply_to(message, "❌ Usage: /dl <URL>")
         return
-    url = args[1].strip()
-    msg = bot.reply_to(message, "🔍 Fetching qualities...")
+
+    raw_url = args[1].strip()
+    url = decrypt_url(raw_url)
+
+    if raw_url != url:
+        bot.reply_to(message, "🔓 Link decrypted successfully!")
+
+    msg = bot.reply_to(message, "🔍 Processing link...")
     try:
+        if ".m3u8" in url or url.endswith(".mp4"):
+            bot.edit_message_text("📥 Added to queue...", message.chat.id, msg.message_id)
+            queue.append((url, message.chat.id, msg.message_id, "auto"))
+            process_queue()
+            return
+
         qualities, info = fetch_qualities(url)
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("⚡ AUTO", callback_data="auto"))
+
         row = []
         for q in qualities:
             row.append(InlineKeyboardButton(f"{q}p", callback_data=str(q)))
             if len(row) == 2:
                 markup.add(*row)
                 row = []
+
         if row:
             markup.add(*row)
+
         user_links[message.chat.id] = url
-        bot.edit_message_text("🎯 Select quality to download:", message.chat.id,
-                              msg.message_id, reply_markup=markup)
+        bot.edit_message_text("🎯 Select quality:", message.chat.id, msg.message_id, reply_markup=markup)
+
     except Exception as e:
         bot.edit_message_text(f"❌ Error:\n{e}", message.chat.id, msg.message_id)
 
