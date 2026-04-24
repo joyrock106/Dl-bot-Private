@@ -34,7 +34,7 @@ dns.resolver.default_resolver.nameservers = ['8.8.8.8', '1.1.1.1']
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OWNER_IDS = list(map(int, os.getenv("OWNER_IDS").split(",")))
+OWNER_ID = int(os.getenv("OWNER_ID"))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
@@ -95,24 +95,57 @@ admins.add(OWNER_ID)
 def is_admin(user_id):
     return user_id in admins
 
-# ------------------ AES DECRYPT ------------------
+# ------------------ NEW: Add/Remove Admin Commands ------------------
 
-def aes_decrypt(data, key=b'0123456789abcdef'):
+@bot.message_handler(commands=['addadmin'])
+def cmd_addadmin(message):
+    if message.from_user.id != OWNER_ID:
+        return bot.reply_to(message, "❌ Owner only command!")
+    
     try:
-        raw = base64.b64decode(data)
-        cipher = AES.new(key, AES.MODE_ECB)
-        return unpad(cipher.decrypt(raw), 16).decode()
-    except:
-        return data
+        parts = message.text.split()
+        if len(parts) < 2:
+            return bot.reply_to(message, "❌ Usage:\n`/addadmin <user_id>`", parse_mode="Markdown")
+        
+        new_admin_id = int(parts[1])
+        if new_admin_id in admins:
+            return bot.reply_to(message, f"✅ User `{new_admin_id}` is already an admin.")
+        
+        admins.add(new_admin_id)
+        bot.reply_to(message, f"✅ Successfully added `{new_admin_id}` as admin.")
+        
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid User ID. Must be a number.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)[:200]}")
 
-def decrypt_url(url):
+
+@bot.message_handler(commands=['removeadmin'])
+def cmd_removeadmin(message):
+    if message.from_user.id != OWNER_ID:
+        return bot.reply_to(message, "❌ Owner only command!")
+    
     try:
-        decoded = base64.b64decode(url).decode()
-        if decoded.startswith("http"):
-            return decoded
-    except:
-        pass
-    return aes_decrypt(url)
+        parts = message.text.split()
+        if len(parts) < 2:
+            return bot.reply_to(message, "❌ Usage:\n`/removeadmin <user_id>`", parse_mode="Markdown")
+        
+        remove_id = int(parts[1])
+        
+        if remove_id == OWNER_ID:
+            return bot.reply_to(message, "❌ You cannot remove the owner!")
+        
+        if remove_id not in admins:
+            return bot.reply_to(message, f"❌ User `{remove_id}` is not an admin.")
+        
+        admins.remove(remove_id)
+        bot.reply_to(message, f"✅ Successfully removed `{remove_id}` from admins.")
+        
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid User ID. Must be a number.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)[:200]}")
+
 
 # ------------------ SIZE FORMAT ------------------
 
