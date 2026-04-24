@@ -188,7 +188,7 @@ def ui(chat_id, msg_id, stage, percent, cur, total, speed="N/A", eta="N/A"):
         bar = "▰" * filled + "▱" * (bar_len - filled)
 
         text = (
-            f"✨ <b>DL AND REC BOT</b>\n"
+            f"✨ <b>SUPER PREMIUM BOT</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"
             
             f"🚀 <i>{stage}</i>\n\n"
@@ -222,7 +222,7 @@ def progress_hook(d, chat_id, msg_id):
     ui(
         chat_id,
         msg_id,
-        "📥 Downloading (SUPER FAST)...",
+        "📥 Downloading START (SUPER FAST)...",
         percent,
         human(done),
         human(total),
@@ -279,7 +279,7 @@ def process_queue():
     item = queue.pop(0)
     threading.Thread(target=download_video, args=item, daemon=True).start()
 
-# ------------------ DOWNLOAD CORE v10.3 (Fixed) ------------------
+# ------------------ DOWNLOAD CORE v10.3 (Fixed Views Error) ------------------
 
 def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0):
     global downloading
@@ -297,7 +297,7 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
 
     thumbnail_path = None
     try:
-        bot.edit_message_text("⚡ Starting PRO MAX ENGINE v10.3 (SUPER FAST)...", chat_id, msg_id)
+        bot.edit_message_text("⚡ Starting SUPER PREMIUM ENGINE (SUPER FAST)...", chat_id, msg_id)
 
         ydl_opts = {
             'progress_hooks': [lambda d: progress_hook(d, chat_id, msg_id)],
@@ -349,7 +349,17 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
         title = info.get("title", "Media")
         duration = info.get("duration", 0)
         views = info.get("view_count", 0)
-        duration_str = f"{duration//60}:{duration%60:02d}" if duration else "N/A"
+
+        # FIXED: Safe views formatting (handles int or float)
+        if views is None:
+            views_str = "0"
+        else:
+            try:
+                views_str = f"{int(views):,}"
+            except:
+                views_str = str(views)
+
+        duration_str = f"{int(duration)//60}:{int(duration)%60:02d}" if duration else "N/A"
 
         thumb_url = info.get("thumbnail")
         thumbnail_path = download_thumbnail(thumb_url)
@@ -368,7 +378,7 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
                "Sending...", "Almost done...")
             time.sleep(0.22)
 
-        caption = f"🎬 {title}\n📊 {views:,} views | ⏱ {duration_str}\n🚀 PRO MAX BOT v10.3"
+        caption = f"🎬 {title}\n📊 {views_str} views | ⏱ {duration_str}\n🚀 SUPER PREMIUM BOT"
 
         if is_audio:
             with open(final_filepath, "rb") as f:
@@ -466,7 +476,7 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
         filepath = os.path.join(DOWNLOAD_FOLDER, f"{filename}.mp4")
 
         bot.edit_message_text(
-            f"📼 <b>PRO MAX REC MODE v10.3</b>\n\n"
+            f"📼 <b>SUPER PREMIUM BOT REC MODE </b>\n\n"
             f"🔗 {m3u8_url[:70]}...\n"
             f"⏱ Recording {duration} seconds...\n"
             f"🎵 Multi-Audio Mode",
@@ -577,7 +587,7 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
             f"Audio: {audio_text}\n"
             f"Date: {date_str}\n"
             f"Time: {time_str}\n\n"
-            f"🚀 PRO MAX BOT v10.3"
+            f"🚀 SUPER PREMIUM BOT v10.3"
         )
 
         with open(filepath, "rb") as f:
@@ -629,7 +639,7 @@ def cmd_rec(message):
 
         msg = bot.reply_to(
             message,
-            "✨ <b>PRO MAX ENGINE</b>\n"
+            "✨ <b>SUPER PREMIUM ENGINE</b>\n"
             "━━━━━━━━━━━━━━\n\n"
             "🔍 <i>Analyzing stream…</i>\n\n"
             "Please wait..."
@@ -715,7 +725,7 @@ def cmd_mediainfo(message):
         preview = info_json[:3800] + "\n... (truncated)" if len(info_json) > 3800 else info_json
 
         bot.edit_message_text(
-            f"<b>📊 PRO MAX Media Data Info</b>\n\n"
+            f"<b>📊 SUPER PREMIUM Media Data Info</b>\n\n"
             f"🔗 <code>{url[:80]}...</code>\n\n"
             f"<pre>{preview}</pre>",
             message.chat.id, msg.message_id, parse_mode="HTML"
@@ -911,7 +921,7 @@ def help_cmd(message):
     if not is_admin(user_id):
         return bot.reply_to(message, "❌ Not allowed")
     bot.reply_to(message,
-        "🚀 <b>PRO MAX BOT v10.3</b>\n\n"
+        "🚀 <b>SUPER PREMIUM BOT v10.3</b>\n\n"
         "/dl &lt;encoded_url&gt; → Start SUPER FAST download\n"
         "/rec &lt;M3U8&gt; &lt;seconds&gt; &lt;filename&gt; → Record live HLS stream\n"
         "/rec -m &lt;M3U8&gt; &lt;seconds&gt; &lt;filename&gt; → Multi-audio record\n"
@@ -982,6 +992,6 @@ def start(message):
 
 # ------------------ RUN ------------------
 
-print("🚀 PRO MAX BOT v10.3 SUPER FAST STARTED")
-print("   /dl command fixed - no more infinite retries")
+print("🚀 Bot is running")
+print("BOT START SOON👍")
 bot.infinity_polling()
