@@ -9,6 +9,8 @@ import urllib3
 import dns.resolver
 import time
 import subprocess
+import json
+import datetime
 
 from dotenv import load_dotenv
 from Cryptodome.Util.Padding import unpad
@@ -21,23 +23,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ------------------ PRO MAX BOT v10.1 SUPER FAST ------------------
 # ULTRA SPEED EDITION (Download + Upload optimized)
-# 
-# 🔥 DOWNLOAD SPEED BOOST:
-#   • Auto-detects & uses aria2c (16 connections) → 5-10x faster than default
-#   • Fallback to yt-dlp high-concurrent fragments (16 threads)
-#   • Larger chunk size + optimized headers
-#   • More retries & fragment retries
-# 
-# 📤 UPLOAD SPEED BOOST:
-#   • Reduced fake upload animation delay (feels faster)
-#   • Telegram streaming enabled + optimized send calls
-#   • No unnecessary sleeps during upload
-# 
-# All previous v10 features + full playlist + cancel + queue remain 100% stable.
-# 
-# ✨ NEW COMMANDS ADDED (v10.2):
-#   • /rec <M3U8_link> <seconds> <filename>  → Record live HLS/M3U8 stream for exact duration (ffmpeg powered)
-#   • /mediainfo <url>                       → Full ffprobe media data (streams, format, bitrate, codec, etc.)
 
 urllib3.disable_warnings()
 
@@ -64,7 +49,7 @@ video_cache = {}
 last_update_time = {}
 active_downloads = {}
 
-# ------------------ CHECK FOR aria2c (SUPER FAST DOWNLOADER) ------------------
+# ------------------ CHECK FOR aria2c ------------------
 
 def has_aria2c():
     try:
@@ -83,7 +68,7 @@ if not ARIA2C_AVAILABLE:
 else:
     print("🚀 aria2c detected → MAXIMUM download speed enabled!")
 
-# ------------------ CHECK FOR ffmpeg (REC + MEDIAINFO) ------------------
+# ------------------ CHECK FOR ffmpeg ------------------
 
 def has_ffmpeg():
     try:
@@ -188,7 +173,7 @@ def get_available_formats(url):
 
     return cleaned[:8], title, info, is_playlist
 
-# ------------------ UI v10.1 PREMIUM ------------------
+# ------------------ UI ------------------
 
 def ui(chat_id, msg_id, stage, percent, cur, total, speed="N/A", eta="N/A"):
     try:
@@ -248,7 +233,11 @@ def progress_hook(d, chat_id, msg_id):
 # ------------------ QUALITY MENU ------------------
 
 def show_quality_menu(chat_id, msg_id, url):
-    formats, title, info, is_playlist = get_available_formats(url)
+    try:
+        formats, title, info, is_playlist = get_available_formats(url)
+    except Exception as e:
+        bot.edit_message_text(f"❌ Failed to fetch formats:\n{str(e)[:250]}", chat_id, msg_id)
+        return
 
     video_cache[chat_id] = {
         "url": url,
@@ -290,7 +279,7 @@ def process_queue():
     item = queue.pop(0)
     threading.Thread(target=download_video, args=item, daemon=True).start()
 
-# ------------------ DOWNLOAD CORE v10.1 (SUPER FAST) ------------------
+# ------------------ DOWNLOAD CORE v10.3 (Fixed) ------------------
 
 def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0):
     global downloading
@@ -308,16 +297,18 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
 
     thumbnail_path = None
     try:
-        bot.edit_message_text("⚡ Starting PRO MAX ENGINE v10.1 (SUPER FAST)...", chat_id, msg_id)
+        bot.edit_message_text("⚡ Starting PRO MAX ENGINE v10.3 (SUPER FAST)...", chat_id, msg_id)
 
         ydl_opts = {
             'progress_hooks': [lambda d: progress_hook(d, chat_id, msg_id)],
-            'retries': 15,
-            'fragment_retries': 15,
+            'retries': 12,
+            'fragment_retries': 12,
             'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
             'outtmpl': outtmpl,
             'concurrent_fragment_downloads': 16,
             'http_chunk_size': 10 * 1024 * 1024,
+            'quiet': True,
+            'no_warnings': True,
         }
 
         if ARIA2C_AVAILABLE and not is_audio:
@@ -330,14 +321,11 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
                         '--max-connection-per-server=16',
                         '--optimize-concurrent-downloads=true',
                         '--split=16',
-                        '--max-tries=0',
+                        '--max-tries=5',
                         '--continue=true'
                     ]
                 }
             })
-            print(f"🚀 Using aria2c for {url[:50]}... (16 connections)")
-        else:
-            print(f"⚡ Using high-concurrent fragments for {url[:50]}...")
 
         if is_audio:
             ydl_opts.update({
@@ -380,7 +368,7 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
                "Sending...", "Almost done...")
             time.sleep(0.22)
 
-        caption = f"🎬 {title}\n📊 {views:,} views | ⏱ {duration_str}\n🚀 PRO MAX BOT v10.1 SUPER FAST"
+        caption = f"🎬 {title}\n📊 {views:,} views | ⏱ {duration_str}\n🚀 PRO MAX BOT v10.3"
 
         if is_audio:
             with open(final_filepath, "rb") as f:
@@ -397,11 +385,12 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
         bot.delete_message(chat_id, msg_id)
 
     except Exception as e:
-        if "Cancelled by user" in str(e):
+        error_str = str(e).lower()
+        if "cancelled by user" in error_str:
             bot.send_message(chat_id, "❌ Download cancelled by user")
-        elif retry < 3:
-            bot.edit_message_text(f"⚠️ Retry {retry+1}/3 (SUPER FAST mode)...", chat_id, msg_id)
-            time.sleep(3)
+        elif retry < 2 and any(x in error_str for x in ["timeout", "connection", "403", "404", "failed", "unavailable"]):
+            bot.edit_message_text(f"⚠️ Retry {retry+1}/3 ...", chat_id, msg_id)
+            time.sleep(4)
             return download_video(url, chat_id, msg_id, format_id, is_audio, retry + 1)
         else:
             bot.send_message(chat_id, f"❌ Failed:\n{str(e)[:400]}")
@@ -417,10 +406,9 @@ def download_video(url, chat_id, msg_id, format_id=None, is_audio=False, retry=0
     downloading = False
     process_queue()
 
-# ------------------ UPDATED: M3U8 RECORDER v10.3 (Multi-Audio Selection) ------------------
+# ------------------ RECORD STREAM MULTI (unchanged) ------------------
 
 def get_stream_info(m3u8_url):
-    """Get video + all audio tracks info using ffprobe"""
     if not FFMPEG_AVAILABLE:
         return None, []
 
@@ -461,7 +449,6 @@ def get_stream_info(m3u8_url):
                     'codec': codec
                 })
 
-        # Take first video stream (usually index 0)
         main_video = video_streams[0] if video_streams else None
         return main_video, audio_streams
 
@@ -486,18 +473,13 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
             chat_id, msg_id
         )
 
-        # Build ffmpeg command with selected audio tracks
         cmd = ['ffmpeg', '-y', '-i', m3u8_url, '-t', str(duration), '-c', 'copy']
-
-        # Map video (usually stream 0)
         cmd.extend(['-map', '0:v:0'])
 
-        # Map selected audio tracks
         if selected_audio_indices:
             for idx in selected_audio_indices:
                 cmd.extend(['-map', f'0:a:{idx}'])
         else:
-            # Default: map all audio if none selected (or first one)
             cmd.extend(['-map', '0:a?'])
 
         cmd.extend([
@@ -510,7 +492,6 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
         )
 
-        # Live recording progress
         start_time = time.time()
         while process.poll() is None:
             elapsed = min(int(time.time() - start_time), duration)
@@ -541,7 +522,7 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
             os.remove(filepath)
             return
 
-        # ==================== Probe final file for info ====================
+        # Probe final file
         actual_duration = duration
         quality_text = "Unknown"
         audio_list = []
@@ -568,19 +549,16 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
                         title = stream.get('tags', {}).get('title', '')
                         name = title if title else (lang.upper() if lang != 'und' else 'Audio')
                         audio_list.append(name)
-
         except:
             pass
 
-        # ==================== Final Filename with BDIX + 12-hour Time ====================
         now = datetime.datetime.now()
         date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%I:%M:%S %p")   # 12-hour with AM/PM
+        time_str = now.strftime("%I:%M:%S %p")
 
         name_without_ext = os.path.splitext(filename)[0]
         final_filename = f"{name_without_ext}.{date_str}.{time_str.replace(':', '-')}.BDIX.mkv"
 
-        # Upload progress
         for p in [20, 45, 65, 80, 92, 100]:
             uploaded = int(file_size * (p / 100))
             ui(chat_id, msg_id, 
@@ -591,7 +569,6 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
                "Uploading...", "Almost done...")
             time.sleep(0.25)
 
-        # Caption
         audio_text = ", ".join(audio_list) if audio_list else "Unknown"
 
         caption = (
@@ -618,10 +595,7 @@ def record_stream_multi(m3u8_url, duration, filename, chat_id, msg_id, selected_
                 pass
 
 
-# ------------------ UPDATED /rec COMMAND HANDLER ------------------
-
-import json
-import datetime   # Make sure these are at the top with other imports
+# ------------------ /rec COMMAND (Updated Multi-Audio) ------------------
 
 @bot.message_handler(commands=['rec'])
 def cmd_rec(message):
@@ -632,16 +606,15 @@ def cmd_rec(message):
     try:
         parts = message.text.split()
 
-        # Check for -m flag
         use_multi = False
         if len(parts) > 1 and parts[1] == '-m':
             use_multi = True
-            parts.pop(1)  # remove -m flag
+            parts.pop(1)
 
         if len(parts) < 4:
             usage = "❌ Usage:\n"
             usage += "/rec <M3U8_link> <seconds> <filename>\n"
-            usage += "/rec -m <M3U8_link> <seconds> <filename>  ← Multi Audio Selection"
+            usage += "/rec -m <M3U8_link> <seconds> <filename>  ← Multi Audio"
             return bot.reply_to(message, usage)
 
         m3u8_url = decrypt_url(parts[1])
@@ -655,23 +628,21 @@ def cmd_rec(message):
         filename = parts[3].strip().replace(" ", "_")[:50]
 
         msg = bot.reply_to(
-    message,
-    "✨ <b>PRO MAX ENGINE</b>\n"
-    "━━━━━━━━━━━━━━\n\n"
-    "🔍 <i>Analyzing stream…</i>\n\n"
-    "Please wait..."
-)
+            message,
+            "✨ <b>PRO MAX ENGINE</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "🔍 <i>Analyzing stream…</i>\n\n"
+            "Please wait..."
+        )
 
         if use_multi:
-            # Multi-audio mode - show selection buttons
             video_info, audio_streams = get_stream_info(m3u8_url)
 
             if not audio_streams:
-                bot.edit_message_text("❌ No audio tracks found or failed to analyze stream.", 
+                bot.edit_message_text("❌ No audio tracks found.", 
                                     message.chat.id, msg.message_id)
                 return
 
-            # Save data for callback
             video_cache[message.chat.id] = {
                 "m3u8_url": m3u8_url,
                 "duration": rec_time,
@@ -698,7 +669,6 @@ def cmd_rec(message):
             )
 
         else:
-            # Normal single mode
             bot.edit_message_text(f"📼 Starting normal recording for {rec_time}s → {filename}.mp4", 
                                 message.chat.id, msg.message_id)
             threading.Thread(
@@ -711,7 +681,7 @@ def cmd_rec(message):
         bot.reply_to(message, f"❌ REC usage error: {str(e)[:150]}")
 
 
-# ------------------ NEW: MEDIAINFO COMMAND (v10.2) ------------------
+# ------------------ MEDIAINFO COMMAND ------------------
 
 @bot.message_handler(commands=['mediainfo'])
 def cmd_mediainfo(message):
@@ -742,7 +712,6 @@ def cmd_mediainfo(message):
         result = subprocess.check_output(probe_cmd, stderr=subprocess.STDOUT, timeout=40)
         info_json = result.decode('utf-8', errors='replace')
 
-        # Truncate to fit Telegram message (4096 char limit)
         preview = info_json[:3800] + "\n... (truncated)" if len(info_json) > 3800 else info_json
 
         bot.edit_message_text(
@@ -757,7 +726,8 @@ def cmd_mediainfo(message):
     except Exception as e:
         bot.reply_to(message, f"❌ MediaInfo error: {str(e)[:250]}")
 
-# ------------------ CALLBACK v10.1 (DL Command + Playlist) ------------------
+
+# ------------------ CALLBACK HANDLERS ------------------
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith(("vf|", "af|", "pl|")))
 def handle_quality(call):
@@ -773,7 +743,7 @@ def handle_quality(call):
         url = data["url"]
 
         if qtype == "pl":
-            bot.edit_message_text("📋 Fetching playlist videos (SUPER FAST)...", chat_id, call.message.message_id)
+            bot.edit_message_text("📋 Fetching playlist videos...", chat_id, call.message.message_id)
             try:
                 with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:
                     playlist_info = ydl.extract_info(url, download=False)
@@ -782,7 +752,7 @@ def handle_quality(call):
                     bot.send_message(chat_id, "❌ No videos found in playlist")
                     return
 
-                bot.send_message(chat_id, f"✅ Playlist loaded: {len(entries)} videos\n🚀 Starting FULL SUPER FAST download...")
+                bot.send_message(chat_id, f"✅ Playlist loaded: {len(entries)} videos")
 
                 for idx, entry in enumerate(entries, 1):
                     video_url = entry.get('url') or entry.get('webpage_url')
@@ -826,8 +796,6 @@ def handle_quality(call):
         pass
 
 
-# ------------------ CANCEL CALLBACK (DL + REC) ------------------
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel|"))
 def handle_cancel(call):
     try:
@@ -840,8 +808,6 @@ def handle_cancel(call):
     except:
         pass
 
-
-# ==================== NEW: Multi-Audio REC Callback (v10.3) ====================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith(("rec_audio|", "rec_cancel|")))
 def handle_rec_audio(call):
@@ -864,9 +830,9 @@ def handle_rec_audio(call):
             bot.answer_callback_query(call.id, "Starting recording...")
 
             if selected == "all":
-                selected_indices = None          # All audio tracks
+                selected_indices = None
             else:
-                selected_indices = [int(selected)]   # Single audio track
+                selected_indices = [int(selected)]
 
             bot.edit_message_text(
                 f"📼 Starting recording with selected audio...\n"
@@ -886,7 +852,8 @@ def handle_rec_audio(call):
     except Exception as e:
         print(f"REC callback error: {e}")
 
-# ------------------ COMMANDS ------------------
+
+# ------------------ FIXED /dl COMMAND ------------------
 
 @bot.message_handler(commands=['dl'])
 def cmd_dl(message):
@@ -897,47 +864,34 @@ def cmd_dl(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
-            return bot.reply_to(message, "❌ Usage: /dl <encoded_url>")
-        url = decrypt_url(parts[1])
-        msg = bot.reply_to(message, "🔍 Fetching qualities...")
-        show_quality_menu(message.chat.id, msg.message_id, url)
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {str(e)[:150]}")
+            return bot.reply_to(message, "❌ Usage:\n/dl <encoded_url>")
 
-@bot.message_handler(commands=['rec'])
-def cmd_rec(message):
-    user_id = message.from_user.id
-    if not is_admin(user_id):
-        return bot.reply_to(message, "❌ Not allowed")
+        raw_url = parts[1].strip()
+        url = decrypt_url(raw_url)
 
-    try:
-        parts = message.text.split(maxsplit=3)
-        if len(parts) < 4:
-            return bot.reply_to(message, "❌ Usage: /rec <M3U8_link> <seconds> <filename>\n\nExample:\n/rec https://example.com/stream.m3u8 3600 my_recording")
+        if not url or not url.startswith("http"):
+            return bot.reply_to(message, "❌ Invalid URL after decryption.")
 
-        m3u8_url = decrypt_url(parts[1])
-        try:
-            rec_time = int(parts[2])
-            if rec_time < 1:
-                raise ValueError
-        except:
-            return bot.reply_to(message, "❌ <seconds> must be a positive integer")
+        msg = bot.reply_to(message, "🔍 Fetching available qualities...")
 
-        filename = parts[3].strip().replace(" ", "_")[:50]  # safe filename
-        filepath = os.path.join(DOWNLOAD_FOLDER, f"{filename}.mp4")
-
-        msg = bot.reply_to(message, f"📼 Starting REC for {rec_time}s → {filename}.mp4")
-        threading.Thread(target=record_stream, args=(m3u8_url, rec_time, filepath, message.chat.id, msg.message_id), daemon=True).start()
+        threading.Thread(
+            target=show_quality_menu,
+            args=(message.chat.id, msg.message_id, url),
+            daemon=True
+        ).start()
 
     except Exception as e:
-        bot.reply_to(message, f"❌ REC usage error: {str(e)[:120]}")
+        bot.reply_to(message, f"❌ Error: {str(e)[:200]}")
+
+
+# ------------------ OTHER COMMANDS ------------------
 
 @bot.message_handler(commands=['queue'])
 def cmd_queue(message):
     user_id = message.from_user.id
     if not is_admin(user_id):
         return
-    text = "<b>📋 PRO MAX Queue v10.1</b>\n\n"
+    text = "<b>📋 PRO MAX Queue v10.3</b>\n\n"
     text += f"🔄 Currently downloading: {'Yes' if downloading else 'No'}\n"
     text += f"⏳ Items waiting: {len(queue)}\n\n"
     if queue:
@@ -957,20 +911,15 @@ def help_cmd(message):
     if not is_admin(user_id):
         return bot.reply_to(message, "❌ Not allowed")
     bot.reply_to(message,
-        "🚀 <b>PRO MAX BOT v10.2 SUPER FAST</b>\n\n"
+        "🚀 <b>PRO MAX BOT v10.3</b>\n\n"
         "/dl &lt;encoded_url&gt; → Start SUPER FAST download\n"
         "/rec &lt;M3U8&gt; &lt;seconds&gt; &lt;filename&gt; → Record live HLS stream\n"
+        "/rec -m &lt;M3U8&gt; &lt;seconds&gt; &lt;filename&gt; → Multi-audio record\n"
         "/mediainfo &lt;url&gt; → Full ffprobe media data\n"
         "/queue → Show queue\n"
         "/clearqueue → Clear queue (owner)\n"
-        "/help → This message\n\n"
-        "✅ aria2c = 5-10x faster downloads\n"
-        "✅ ffmpeg REC + MediaInfo\n"
-        "✅ Full playlist support\n"
-        "✅ Cancel button for each file"
+        "/help → This message"
     )
-
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -978,14 +927,12 @@ def start(message):
 
     photo_url = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh1i2YzNy6ldpUOoInfvqCc4jGdo4tllIZ8iHTurkNaT-2SPTXZsf3VHWSQDDPAruafwIkf1MqGQujBqAnpq7A0rKiib9LZRea55Q2NmeFL2MjTfXA-g2U5DaP6Zm-NclTN0UfI-4Uh8aBfkY2xSz041ne94bu7xbFpAJ5lVgzaKg04dkYZ8caSCh26LWY/s1200/1000067709.jpg"
 
-    # 🔘 Buttons
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("💎 Upgrade", url="https://t.me/JOYDVL"),
         InlineKeyboardButton("📢 Updates", url="https://t.me/+sPggwQH5Vbc1N2Rl")
     )
 
-    # ❌ Non-premium user
     if not is_admin(user_id):
         text = """🔐 *Premium Access Required*
 
@@ -996,7 +943,6 @@ def start(message):
 • ⚡ Ultra Fast Download  
 • 🎥 M3U8 Recording  
 • ☁️ Auto Upload  
-• 📊 Live Progress  
 
 ━━━━━━━━━━━━━━━━━━━━━━━  
 👉 Click below to upgrade
@@ -1009,16 +955,13 @@ def start(message):
             reply_markup=markup
         )
 
-    # ✅ Premium user
     status = "🚀 <b>SUPER PREMIUM BOT ACTIVE</b>\n\n"
-
     status += "\n<b>🚀 Features</b>\n"
     status += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     status += "🎬 M3U8 Recording\n"
     status += "⚡ Ultra Fast Download\n"
     status += "📊 Live Progress Bar\n"
     status += "🎧 Multi Audio Support\n"
-    status += "☁️ Auto Upload to Telegram\n"
     status += "🛑 Cancel Anytime\n"
 
     status += "\n<b>📌 Commands</b>\n"
@@ -1039,7 +982,6 @@ def start(message):
 
 # ------------------ RUN ------------------
 
-print("🚀 PRO MAX BOT v10.2 SUPER FAST STARTED")
-print("   Download speed maximized with aria2c (if installed)")
-print("   REC + MediaInfo powered by ffmpeg")
+print("🚀 PRO MAX BOT v10.3 SUPER FAST STARTED")
+print("   /dl command fixed - no more infinite retries")
 bot.infinity_polling()
