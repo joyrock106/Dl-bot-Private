@@ -34,7 +34,7 @@ dns.resolver.default_resolver.nameservers = ['8.8.8.8', '1.1.1.1']
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
+OWNER_IDS = list(map(int, os.getenv("OWNER_IDS").split(",")))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
