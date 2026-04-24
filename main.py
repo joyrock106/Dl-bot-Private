@@ -19,6 +19,40 @@ from Cryptodome.Cipher import AES
 import telebot
 import yt_dlp
 
+# ------------------ URL DECRYPT ------------------
+
+def decrypt_url(enc_url):
+    try:
+        # Try base64 decode first
+        try:
+            decoded = base64.b64decode(enc_url).decode()
+            if decoded.startswith("http"):
+                return decoded
+        except:
+            pass
+
+        # AES decrypt (optional - if you use it)
+        SECRET_KEY = os.getenv("SECRET_KEY")
+
+        if SECRET_KEY:
+            key = SECRET_KEY.encode()[:16].ljust(16, b'\0')
+            data = base64.b64decode(enc_url)
+
+            iv = data[:16]
+            cipher = AES.new(key, AES.MODE_CBC, iv)
+            decrypted = unpad(cipher.decrypt(data[16:]), AES.block_size)
+
+            url = decrypted.decode()
+            if url.startswith("http"):
+                return url
+
+        # fallback → return original
+        return enc_url
+
+    except Exception as e:
+        print(f"decrypt error: {e}")
+        return enc_url
+
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ------------------ PRO MAX BOT v10.1 SUPER FAST ------------------
